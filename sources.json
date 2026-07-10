@@ -1,0 +1,66 @@
+[
+  {
+    "layer": "neighborhood-organizations",
+    "title": "Neighborhood organizations",
+    "description": "Boundaries for the city's recognized neighborhood organizations.",
+    "url": "https://services.arcgis.com/f48yV21HSEYeCYMI/ArcGIS/rest/services/One_PS_Neighborhood_Organizations_(View)/FeatureServer/0",
+    "source": "City of Palm Springs",
+    "source_url": "https://services.arcgis.com/f48yV21HSEYeCYMI/arcgis/rest/services/"
+  },
+  {
+    "layer": "city-boundary",
+    "title": "City boundary",
+    "description": "The incorporated boundary of Palm Springs.",
+    "url": "https://services.arcgis.com/f48yV21HSEYeCYMI/ArcGIS/rest/services/City_of_PS_Boundary/FeatureServer/0",
+    "source": "City of Palm Springs",
+    "source_url": "https://services.arcgis.com/f48yV21HSEYeCYMI/arcgis/rest/services/"
+  },
+  {
+    "layer": "voting-precincts",
+    "title": "Voting precincts",
+    "description": "Voting precinct boundaries in Palm Springs.",
+    "url": "https://services.arcgis.com/f48yV21HSEYeCYMI/ArcGIS/rest/services/Voting_Precincts_(View)/FeatureServer/0",
+    "source": "City of Palm Springs",
+    "source_url": "https://services.arcgis.com/f48yV21HSEYeCYMI/arcgis/rest/services/"
+  },
+  {
+    "layer": "parks",
+    "title": "Parks",
+    "description": "Palm Springs park boundaries.",
+    "url": "https://services.arcgis.com/f48yV21HSEYeCYMI/ArcGIS/rest/services/Palm_Springs_Parks_(View)/FeatureServer/0",
+    "source": "City of Palm Springs",
+    "source_url": "https://services.arcgis.com/f48yV21HSEYeCYMI/arcgis/rest/services/"
+  },
+  {
+    "layer": "parcels",
+    "title": "Parcels",
+    "description": "Parcel boundaries where the source CityFlag field is Yes.",
+    "url": "https://services.arcgis.com/f48yV21HSEYeCYMI/ArcGIS/rest/services/Palm_Springs_Parcels_(View)/FeatureServer/0",
+    "source": "City of Palm Springs",
+    "source_url": "https://services.arcgis.com/f48yV21HSEYeCYMI/arcgis/rest/services/"
+  },
+  {
+    "layer": "tree-inventory",
+    "title": "Tree inventory",
+    "description": "Locations and attributes from the city's tree inventory.",
+    "url": "https://services.arcgis.com/f48yV21HSEYeCYMI/ArcGIS/rest/services/COPS_Tree_Inventory/FeatureServer/0",
+    "source": "City of Palm Springs",
+    "source_url": "https://services.arcgis.com/f48yV21HSEYeCYMI/arcgis/rest/services/"
+  },
+  {
+    "layer": "local-shops",
+    "title": "Local shops",
+    "description": "Businesses listed in the city's shop-local program.",
+    "url": "https://services.arcgis.com/f48yV21HSEYeCYMI/ArcGIS/rest/services/PS_Shop_Local_List_(View)/FeatureServer/0",
+    "source": "City of Palm Springs",
+    "source_url": "https://services.arcgis.com/f48yV21HSEYeCYMI/arcgis/rest/services/"
+  },
+  {
+    "layer": "addresses",
+    "title": "Addresses",
+    "description": "Address points published by the City of Palm Springs.",
+    "url": "https://services.arcgis.com/f48yV21HSEYeCYMI/ArcGIS/rest/services/PS_Addresses_DroneSense/FeatureServer/0",
+    "source": "City of Palm Springs",
+    "source_url": "https://services.arcgis.com/f48yV21HSEYeCYMI/arcgis/rest/services/"
+  }
+]
