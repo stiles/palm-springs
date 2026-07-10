@@ -38,9 +38,9 @@ Edit [`sources.json`](sources.json) to add or remove layers. Layer IDs must be
 unique lowercase kebab-case values. A failed download exits without replacing
 the existing data.
 
-Local updates use the `haekeo` AWS profile and upload to
-`s3://stilesdata.com/palm-springs/data/`. Override `AWS_PROFILE`, `BUCKET` or
-`PREFIX` when needed.
+Updates upload to `s3://stilesdata.com/palm-springs/data/`. If
+`AWS_PROFILE_NAME` is set, the uploader uses that AWS profile; otherwise it uses
+the default AWS credential chain. Override `BUCKET` or `PREFIX` when needed.
 
 The [weekly workflow](.github/workflows/update-data.yml) runs every Monday,
 uploads the current files to S3 and refreshes this inventory. It requires

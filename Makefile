@@ -2,8 +2,8 @@
 
 BUCKET ?= stilesdata.com
 PREFIX ?= palm-springs
-AWS_PROFILE = haekeo
-PROFILE_ARG = $(if $(strip $(AWS_PROFILE)),--profile "$(AWS_PROFILE)",)
+AWS_PROFILE_NAME ?=
+PROFILE_ARG = $(if $(strip $(AWS_PROFILE_NAME)),--profile "$(AWS_PROFILE_NAME)",)
 
 install:
 	python -m pip install -r requirements.txt

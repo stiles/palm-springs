@@ -38,7 +38,7 @@ jobs:
           aws-region: us-west-1
 
       - name: Download and upload layers
-        run: make update AWS_PROFILE=
+        run: make update
 
       - name: Commit inventory
         run: |
