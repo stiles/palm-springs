@@ -1,24 +1,35 @@
-"""Download configured Palm Springs ArcGIS layers and rebuild the inventory."""
+"""Download Palm Springs GIS layers, derive datasets, and rebuild the inventory."""
 
 from __future__ import annotations
 
+import csv
+import gzip
+import hashlib
 import html
+import io
 import json
 import os
 import re
 import shutil
 import tempfile
+from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 import ezesri
+import geopandas as gpd
+import mercantile
+import pandas as pd
 import requests
 from requests.adapters import HTTPAdapter
+from shapely.geometry import MultiPolygon, Polygon, mapping, shape
+from shapely.ops import unary_union
 from urllib3.util.retry import Retry
 
 ROOT = Path(__file__).resolve().parent
 SOURCES_PATH = ROOT / "sources.json"
+DERIVED_SOURCES_PATH = ROOT / "derived-sources.json"
 DATA_DIR = ROOT / ".build" / "data"
 CATALOG_PATH = DATA_DIR / "catalog.json"
 README_PATH = ROOT / "README.md"
@@ -26,6 +37,20 @@ PUBLIC_BASE_URL = os.getenv(
     "PUBLIC_BASE_URL", "https://stilesdata.com/palm-springs/data"
 ).rstrip("/")
 REQUIRED_SOURCE_FIELDS = {"layer", "url", "source", "source_url"}
+REQUIRED_DERIVED_FIELDS = {
+    "layer",
+    "title",
+    "description",
+    "manifest_url",
+    "location",
+    "zoom",
+    "source",
+    "source_url",
+    "license",
+    "license_url",
+    "license_file",
+    "inputs",
+}
 LAYER_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
@@ -60,6 +85,45 @@ def load_sources() -> list[dict[str, str]]:
         seen_urls.add(url)
 
     return sources
+
+
+def load_derived_sources() -> list[dict[str, Any]]:
+    """Load and validate derived-layer configuration."""
+    sources = json.loads(DERIVED_SOURCES_PATH.read_text())
+    if not isinstance(sources, list):
+        raise ValueError("derived-sources.json must contain a list")
+
+    seen_layers: set[str] = set()
+    for index, source in enumerate(sources):
+        if not isinstance(source, dict):
+            raise ValueError(f"Derived source {index + 1} must be an object")
+        missing = REQUIRED_DERIVED_FIELDS - source.keys()
+        if missing:
+            raise ValueError(
+                f"Derived source {index + 1} is missing: "
+                f"{', '.join(sorted(missing))}"
+            )
+        layer = source["layer"]
+        if not isinstance(layer, str) or not LAYER_ID_PATTERN.fullmatch(layer):
+            raise ValueError(f"Invalid derived layer ID: {layer!r}")
+        if layer in seen_layers:
+            raise ValueError(f"Duplicate derived layer ID: {layer}")
+        seen_layers.add(layer)
+
+    return sources
+
+
+def request_session() -> requests.Session:
+    """Create a retrying HTTP session for public data sources."""
+    retry = Retry(
+        total=3,
+        backoff_factor=2,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=("GET",),
+    )
+    session = requests.Session()
+    session.mount("https://", HTTPAdapter(max_retries=retry))
+    return session
 
 
 def plain_text(value: Any) -> str:
@@ -104,14 +168,7 @@ def geometry_label(metadata: dict[str, Any], geodataframe: Any) -> str:
 
 def expected_feature_count(url: str) -> int:
     """Fetch the source count with retries so partial downloads are rejected."""
-    retry = Retry(
-        total=3,
-        backoff_factor=2,
-        status_forcelist=(429, 500, 502, 503, 504),
-        allowed_methods=("GET",),
-    )
-    session = requests.Session()
-    session.mount("https://", HTTPAdapter(max_retries=retry))
+    session = request_session()
     response = session.get(
         f"{url}/query",
         params={"f": "json", "where": "1=1", "returnCountOnly": "true"},
@@ -167,13 +224,256 @@ def download_layer(
         "feature_count": len(geodataframe),
         "geometry_type": geometry_label(metadata, geodataframe),
         "crs": "EPSG:4326",
+        "layer_type": "source",
         "source": source["source"],
         "source_url": source["source_url"],
+        "source_link_label": "ArcGIS",
         "service_url": source["url"],
         "data_url": f"{PUBLIC_BASE_URL}/{layer_id}.geojson",
         "source_definition_query": metadata.get("definitionQuery") or None,
         "source_last_updated": source_last_updated(metadata),
         "downloaded_at": generated_at,
+    }
+
+
+def select_manifest_tiles(
+    manifest_text: str,
+    bounds: tuple[float, float, float, float],
+    location: str,
+    zoom: int,
+) -> list[dict[str, str]]:
+    """Select all GlobalML manifest tiles covering a WGS84 bounding box."""
+    quadkeys = {
+        mercantile.quadkey(tile)
+        for tile in mercantile.tiles(*bounds, zooms=zoom)
+    }
+    rows = csv.DictReader(io.StringIO(manifest_text))
+    matches = {
+        row["QuadKey"]: row
+        for row in rows
+        if row.get("Location") == location and row.get("QuadKey") in quadkeys
+    }
+    missing = quadkeys - matches.keys()
+    if missing:
+        raise RuntimeError(
+            f"GlobalML manifest is missing {location} tiles: "
+            f"{', '.join(sorted(missing))}"
+        )
+    return [matches[quadkey] for quadkey in sorted(matches)]
+
+
+def polygonal_geometry(geometry: Any) -> Polygon | MultiPolygon | None:
+    """Return only polygonal parts of an intersection result."""
+    if geometry.is_empty:
+        return None
+    if isinstance(geometry, (Polygon, MultiPolygon)):
+        return geometry
+    polygons = [
+        part
+        for part in getattr(geometry, "geoms", ())
+        if isinstance(part, (Polygon, MultiPolygon)) and not part.is_empty
+    ]
+    if not polygons:
+        return None
+    combined = unary_union(polygons)
+    return combined if isinstance(combined, (Polygon, MultiPolygon)) else None
+
+
+def stable_building_id(geometry: Polygon | MultiPolygon) -> str:
+    """Generate a deterministic ID from normalized clipped geometry."""
+    normalized = geometry.normalize()
+    digest = hashlib.sha256(normalized.wkb).hexdigest()
+    return f"msft-{digest[:24]}"
+
+
+def optional_number(value: Any) -> float | None:
+    """Return a JSON-safe source number, treating GlobalML -1 as unknown."""
+    if value is None or pd.isna(value):
+        return None
+    number = float(value)
+    return None if number == -1 else number
+
+
+def stream_clipped_footprints(
+    tile_rows: Iterable[dict[str, str]],
+    boundary: Polygon | MultiPolygon,
+    session: requests.Session,
+) -> gpd.GeoDataFrame:
+    """Stream GlobalML tiles and retain footprints clipped to the city."""
+    buildings: dict[str, dict[str, Any]] = {}
+    for tile in tile_rows:
+        print(f"Downloading Microsoft building tile {tile['QuadKey']}...")
+        with session.get(tile["Url"], stream=True, timeout=(30, 180)) as response:
+            response.raise_for_status()
+            with gzip.GzipFile(fileobj=response.raw) as compressed:
+                for raw_line in compressed:
+                    feature = json.loads(raw_line)
+                    footprint = shape(feature["geometry"])
+                    if footprint.is_empty or not footprint.intersects(boundary):
+                        continue
+                    clipped = polygonal_geometry(footprint.intersection(boundary))
+                    if clipped is None:
+                        continue
+                    building_id = stable_building_id(clipped)
+                    properties = feature.get("properties") or {}
+                    buildings[building_id] = {
+                        "building_id": building_id,
+                        "height": optional_number(properties.get("height")),
+                        "confidence": optional_number(properties.get("confidence")),
+                        "geometry": clipped,
+                    }
+
+    if not buildings:
+        raise RuntimeError("No Microsoft building footprints intersect Palm Springs")
+    records = [buildings[key] for key in sorted(buildings)]
+    return gpd.GeoDataFrame(records, geometry="geometry", crs="EPSG:4326")
+
+
+def json_value(value: Any) -> Any:
+    """Convert a scalar dataframe value to a JSON-safe Python value."""
+    if value is None or pd.isna(value):
+        return None
+    return value.item() if hasattr(value, "item") else value
+
+
+def enrich_buildings(
+    buildings: gpd.GeoDataFrame, addresses: gpd.GeoDataFrame
+) -> list[dict[str, Any]]:
+    """Attach strictly contained address records to building polygons."""
+    if buildings.crs != addresses.crs:
+        addresses = addresses.to_crs(buildings.crs)
+
+    address_fields = [
+        "AddressID",
+        "Address",
+        "Parcel_APN",
+        "Unit",
+        "ZipCode",
+        "Neighborhood",
+    ]
+    missing_fields = set(address_fields) - set(addresses.columns)
+    if missing_fields:
+        raise RuntimeError(
+            f"Address layer is missing fields: {', '.join(sorted(missing_fields))}"
+        )
+
+    matches = gpd.sjoin(
+        addresses[address_fields + ["geometry"]],
+        buildings[["building_id", "geometry"]],
+        how="inner",
+        predicate="within",
+    )
+    addresses_by_building: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for _, address in matches.iterrows():
+        addresses_by_building[address["building_id"]].append(
+            {field: json_value(address[field]) for field in address_fields}
+        )
+
+    features = []
+    for building in buildings.sort_values("building_id").itertuples():
+        contained = addresses_by_building.get(building.building_id, [])
+        contained.sort(
+            key=lambda address: (
+                str(address["AddressID"] or ""),
+                str(address["Address"] or ""),
+            )
+        )
+        features.append(
+            {
+                "type": "Feature",
+                "properties": {
+                    "building_id": building.building_id,
+                    "height": json_value(building.height),
+                    "confidence": json_value(building.confidence),
+                    "address_count": len(contained),
+                    "addresses": contained,
+                },
+                "geometry": mapping(building.geometry.normalize()),
+            }
+        )
+    return features
+
+
+def write_feature_collection(path: Path, features: list[dict[str, Any]]) -> None:
+    """Write deterministic GeoJSON while preserving nested address arrays."""
+    collection = {
+        "type": "FeatureCollection",
+        "name": path.stem,
+        "crs": {
+            "type": "name",
+            "properties": {"name": "urn:ogc:def:crs:OGC:1.3:CRS84"},
+        },
+        "features": features,
+    }
+    path.write_text(
+        json.dumps(collection, separators=(",", ":"), allow_nan=False) + "\n"
+    )
+
+
+def derive_building_footprints(
+    config: dict[str, Any],
+    staging_dir: Path,
+    generated_at: str,
+    session: requests.Session | None = None,
+) -> dict[str, Any]:
+    """Build the clipped and address-enriched Microsoft footprint layer."""
+    print(f"Deriving {config['layer']}...")
+    session = session or request_session()
+    boundary_frame = gpd.read_file(staging_dir / "city-boundary.geojson").to_crs(
+        "EPSG:4326"
+    )
+    addresses = gpd.read_file(staging_dir / "addresses.geojson").to_crs("EPSG:4326")
+    boundary = polygonal_geometry(boundary_frame.geometry.union_all())
+    if boundary is None:
+        raise RuntimeError("City boundary does not contain polygon geometry")
+
+    manifest_response = session.get(config["manifest_url"], timeout=60)
+    manifest_response.raise_for_status()
+    tiles = select_manifest_tiles(
+        manifest_response.text,
+        tuple(boundary.bounds),
+        config["location"],
+        config["zoom"],
+    )
+    buildings = stream_clipped_footprints(tiles, boundary, session)
+    features = enrich_buildings(buildings, addresses)
+    output_path = staging_dir / f"{config['layer']}.geojson"
+    write_feature_collection(output_path, features)
+
+    license_source = ROOT / config["license_file"]
+    license_filename = f"{config['layer']}-license.txt"
+    shutil.copyfile(license_source, staging_dir / license_filename)
+    upload_dates = [tile["UploadDate"] for tile in tiles if tile.get("UploadDate")]
+    source_date = max(upload_dates) if upload_dates else None
+
+    return {
+        "id": config["layer"],
+        "title": config["title"],
+        "description": config["description"],
+        "feature_count": len(features),
+        "geometry_type": "Polygon",
+        "crs": "EPSG:4326",
+        "layer_type": "derived",
+        "source": config["source"],
+        "source_url": config["source_url"],
+        "source_link_label": "Microsoft",
+        "data_url": f"{PUBLIC_BASE_URL}/{config['layer']}.geojson",
+        "source_last_updated": source_date,
+        "downloaded_at": generated_at,
+        "derived_from": config["inputs"],
+        "method": "clip-to-city-boundary; attach strictly contained addresses",
+        "license": config["license"],
+        "license_url": config["license_url"],
+        "license_data_url": f"{PUBLIC_BASE_URL}/{license_filename}",
+        "source_tiles": [
+            {
+                "quadkey": tile["QuadKey"],
+                "url": tile["Url"],
+                "size": tile.get("Size"),
+                "upload_date": tile.get("UploadDate"),
+            }
+            for tile in tiles
+        ],
     }
 
 
@@ -188,38 +488,67 @@ def build_readme(catalog: dict[str, Any]) -> str:
     for layer in catalog["layers"]:
         updated = layer["source_last_updated"]
         updated_date = updated[:10] if updated else "Not reported"
+        source_url = layer.get("service_url") or layer["source_url"]
         rows.append(
             "| [{title}]({data_url}) | {description} | {count:,} | "
-            "{geometry} | {updated} | [ArcGIS]({service_url}) |".format(
+            "{geometry} | {updated} | [{source_label}]({source_url}) |".format(
                 title=markdown_cell(layer["title"]),
                 data_url=layer["data_url"],
                 description=markdown_cell(layer["description"]),
                 count=layer["feature_count"],
                 geometry=markdown_cell(layer["geometry_type"]),
                 updated=updated_date,
-                service_url=layer["service_url"],
+                source_label=markdown_cell(layer["source_link_label"]),
+                source_url=source_url,
             )
         )
 
     generated_date = catalog["generated_at"][:10]
     inventory = "\n".join(rows)
+    derived_sections = []
+    for layer in catalog["layers"]:
+        if layer["layer_type"] != "derived":
+            continue
+        inputs = ", ".join(f"`{item}`" for item in layer["derived_from"])
+        derived_sections.append(
+            "### {title}\n\n"
+            "Built from [{source}]({source_url}) and the {inputs} layers. "
+            "Method: {method}. Licensed under [{license}]({license_url}); "
+            "[license copy]({license_data_url}).".format(
+                title=layer["title"],
+                source=layer["source"],
+                source_url=layer["source_url"],
+                inputs=inputs,
+                method=layer["method"],
+                license=layer["license"],
+                license_url=layer["license_url"],
+                license_data_url=layer["license_data_url"],
+            )
+        )
+    derived_documentation = "\n\n".join(derived_sections)
+    derived_section = (
+        f"\n\n## Derived layers\n\n{derived_documentation}"
+        if derived_documentation
+        else ""
+    )
     return f"""# Palm Springs open data
 
-Current copies of public GIS layers published by the City of Palm Springs,
-California. The data is downloaded from ArcGIS once a week and converted to
-GeoJSON in WGS84 (EPSG:4326).
+Current public GIS layers for Palm Springs, California. Source layers are
+downloaded once a week and selected derived layers combine clearly identified
+open datasets. All outputs are GeoJSON in WGS84 (EPSG:4326).
 
 ## Layers
 
 Inventory generated {generated_date}. Feature counts describe the files on S3.
-“Source updated” is the edit date reported by ArcGIS when available.
+“Source updated” is the latest date reported by the upstream source when
+available.
 
-| Layer | Description | Features | Geometry | Source updated | Service |
+| Layer | Description | Features | Geometry | Source updated | Source |
 | --- | --- | ---: | --- | --- | --- |
 {inventory}
 
 Machine-readable metadata is available in
-[`catalog.json`]({PUBLIC_BASE_URL}/catalog.json).
+[`catalog.json`]({PUBLIC_BASE_URL}/catalog.json).{derived_section}
 
 ## Update the data
 
@@ -232,8 +561,9 @@ pip install -r requirements.txt
 make update
 ```
 
-Edit [`sources.json`](sources.json) to add or remove layers. Layer IDs must be
-unique lowercase kebab-case values. A failed download exits without replacing
+Edit [`sources.json`](sources.json) for municipal layers and
+[`derived-sources.json`](derived-sources.json) for derived layers. Layer IDs must
+be unique lowercase kebab-case values. A failed build exits without replacing
 the existing data.
 
 Updates upload to `s3://stilesdata.com/palm-springs/data/`. If
@@ -247,10 +577,9 @@ be run manually from the Actions tab.
 
 ## Source and reuse
 
-The City of Palm Springs is the source of these layers. This repository
-republishes snapshots on S3 for convenience and does not alter source attributes
-beyond converting coordinates to WGS84. Consult the linked ArcGIS services for
-authoritative data, descriptions and applicable use terms.
+The City of Palm Springs is the source of the municipal layers. Derived layers
+identify their additional sources, methods and licenses above. Consult each
+linked source for authoritative data, descriptions and applicable use terms.
 """
 
 
@@ -262,8 +591,16 @@ def publish(staging_dir: Path, catalog: dict[str, Any]) -> None:
         filename = f"{layer['id']}.geojson"
         expected_files.add(filename)
         shutil.move(staging_dir / filename, DATA_DIR / filename)
+        license_data_url = layer.get("license_data_url")
+        if license_data_url:
+            license_filename = license_data_url.rsplit("/", 1)[-1]
+            expected_files.add(license_filename)
+            shutil.move(
+                staging_dir / license_filename,
+                DATA_DIR / license_filename,
+            )
 
-    for existing_path in DATA_DIR.glob("*.geojson"):
+    for existing_path in DATA_DIR.iterdir():
         if existing_path.name not in expected_files:
             existing_path.unlink()
 
@@ -274,6 +611,14 @@ def publish(staging_dir: Path, catalog: dict[str, Any]) -> None:
 def main() -> None:
     """Download all configured layers and publish the complete snapshot."""
     sources = load_sources()
+    derived_sources = load_derived_sources()
+    duplicate_ids = {source["layer"] for source in sources} & {
+        source["layer"] for source in derived_sources
+    }
+    if duplicate_ids:
+        raise ValueError(
+            f"Layer IDs appear in both source files: {', '.join(sorted(duplicate_ids))}"
+        )
     generated_at = datetime.now(UTC).replace(microsecond=0).isoformat()
 
     with tempfile.TemporaryDirectory(prefix="palm-springs-") as temp_dir:
@@ -281,6 +626,10 @@ def main() -> None:
         layers = [
             download_layer(source, staging_dir, generated_at) for source in sources
         ]
+        layers.extend(
+            derive_building_footprints(source, staging_dir, generated_at)
+            for source in derived_sources
+        )
         catalog = {
             "generated_at": generated_at,
             "crs": "EPSG:4326",

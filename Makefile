@@ -17,3 +17,5 @@ update:
 check:
 	python -m compileall -q download.py
 	python -m json.tool sources.json >/dev/null
+	python -m json.tool derived-sources.json >/dev/null
+	python -m pytest -q

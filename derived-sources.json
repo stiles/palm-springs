@@ -1,0 +1,19 @@
+[
+  {
+    "layer": "building-footprints",
+    "title": "Building footprints",
+    "description": "Microsoft building footprints clipped to Palm Springs and enriched with contained city address points.",
+    "manifest_url": "https://minedbuildings.z5.web.core.windows.net/global-buildings/dataset-links.csv",
+    "location": "UnitedStates",
+    "zoom": 9,
+    "source": "Microsoft GlobalML Building Footprints",
+    "source_url": "https://github.com/microsoft/GlobalMLBuildingFootprints",
+    "license": "CDLA Permissive 2.0",
+    "license_url": "https://cdla.dev/permissive-2-0/",
+    "license_file": "licenses/microsoft-globalml-building-footprints.txt",
+    "inputs": [
+      "city-boundary",
+      "addresses"
+    ]
+  }
+]

@@ -1,0 +1,4 @@
+Data in this repository has been licensed by Microsoft under CLDA Permissive 2.0.
+
+Source: https://github.com/microsoft/GlobalMLBuildingFootprints
+License: https://cdla.dev/permissive-2-0/

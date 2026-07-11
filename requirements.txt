@@ -1,2 +1,7 @@
 ezesri==0.3.3
+geopandas==1.1.4
+mercantile==1.2.1
+pandas==3.0.3
+pytest==9.1.1
 requests==2.34.2
+shapely==2.1.2
