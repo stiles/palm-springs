@@ -1,15 +1,18 @@
-# Palm Springs open data
+# Palm Springs GIS data
 
-Current public GIS layers for Palm Springs, California. Source layers are
-downloaded once a week and selected derived layers combine clearly identified
-open datasets. Spatial outputs use WGS84 (EPSG:4326) and are published as
-GeoJSON or GeoParquet, with JSON lookup tables where useful.
+This repository keeps a current collection of public GIS data for Palm Springs,
+California. Most layers come straight from the city. A few take extra work: the
+pipeline clips Microsoft building footprints to the city and uses Census blocks
+to estimate population for local neighborhoods and voting precincts.
+
+Everything refreshes once a week. Spatial files use WGS84 (EPSG:4326) and are
+available as GeoJSON or GeoParquet, with JSON lookup tables where they are handy.
 
 ## Layers
 
-Inventory generated 2026-07-11. Feature counts describe the files on S3.
-“Source updated” is the latest date reported by the upstream source when
-available.
+These links point to the latest files on S3. The inventory was rebuilt on
+2026-07-11; “source updated” is the latest date reported by the upstream
+publisher when one is available.
 
 | Layer | Description | Features | Geometry | Source updated | Source |
 | --- | --- | ---: | --- | --- | --- |
@@ -26,44 +29,47 @@ available.
 | [Neighborhood organization demographics](https://stilesdata.com/palm-springs/data/neighborhood-organizations-demographics.parquet) | 2020 Census population, voting-age population, race, ethnicity and housing counts apportioned to neighborhood organization boundaries. | 66 | Polygon | 2020-04-01 | [Census](https://www.census.gov/programs-surveys/decennial-census/about/rdo/summary-files.html) |
 | [Voting precinct demographics](https://stilesdata.com/palm-springs/data/voting-precincts-demographics.parquet) | 2020 Census population, voting-age population, race, ethnicity and housing counts apportioned to Palm Springs voting precincts. | 105 | Polygon | 2020-04-01 | [Census](https://www.census.gov/programs-surveys/decennial-census/about/rdo/summary-files.html) |
 
-Machine-readable metadata is available in
+Want to work with the inventory programmatically? Start with
 [`catalog.json`](https://stilesdata.com/palm-springs/data/catalog.json).
 
 ## Derived layers
 
 ### Building footprints
 
-Built from [Microsoft GlobalML Building Footprints](https://github.com/microsoft/GlobalMLBuildingFootprints) and the `city-boundary`, `addresses` layers. Method: clip-to-city-boundary; attach strictly contained addresses. Licensed under [CDLA Permissive 2.0](https://cdla.dev/permissive-2-0/); [license copy](https://stilesdata.com/palm-springs/data/building-footprints-license.txt).
+We start with [Microsoft GlobalML Building Footprints](https://github.com/microsoft/GlobalMLBuildingFootprints), clip the footprints to the city boundary and attach any city address points that fall inside each building. The source data is available under [CDLA Permissive 2.0](https://cdla.dev/permissive-2-0/); a [copy of the license](https://stilesdata.com/palm-springs/data/building-footprints-license.txt) travels with the output.
 
 ### Neighborhood organization demographics
 
-Built from [US Census Bureau 2020 Decennial Census PL 94-171](https://www.census.gov/programs-surveys/decennial-census/about/rdo/summary-files.html) and the `neighborhood-organizations`, `census-blocks-2020`, `addresses`, `building-footprints` layers. Method: address share; building-area fallback; land-area fallback; full blocks retained as denominator.
+This estimate starts with [US Census Bureau 2020 Decennial Census PL 94-171](https://www.census.gov/programs-surveys/decennial-census/about/rdo/summary-files.html) block counts. We combine them with `neighborhood-organizations`, `census-blocks-2020`, `addresses`, `building-footprints`, using addresses and buildings to place people more realistically than a simple land-area split.
 
-Outputs: [GeoParquet](https://stilesdata.com/palm-springs/data/neighborhood-organizations-demographics.parquet) | [JSON](https://stilesdata.com/palm-springs/data/neighborhood-organizations-demographics.json).
+Download it as [GeoParquet](https://stilesdata.com/palm-springs/data/neighborhood-organizations-demographics.parquet) | [JSON](https://stilesdata.com/palm-springs/data/neighborhood-organizations-demographics.json).
 
-Census vintage: 2020. Apportioned population: 44,558, compared with the official Palm Springs count of 44,575 (-17; -0.04%). Unassigned population from intersecting blocks: 3,766 (7.79%).
+The 2020 Census produced an apportioned population of 44,558 here. The official Palm Springs count was 44,575, a difference of -17 (-0.04%). Another 3,766 people from intersecting blocks remain unassigned (7.79%) rather than being forced into a boundary.
 
 ### Voting precinct demographics
 
-Built from [US Census Bureau 2020 Decennial Census PL 94-171](https://www.census.gov/programs-surveys/decennial-census/about/rdo/summary-files.html) and the `voting-precincts`, `census-blocks-2020`, `addresses`, `building-footprints` layers. Method: address share; building-area fallback; land-area fallback; full blocks retained as denominator.
+This estimate starts with [US Census Bureau 2020 Decennial Census PL 94-171](https://www.census.gov/programs-surveys/decennial-census/about/rdo/summary-files.html) block counts. We combine them with `voting-precincts`, `census-blocks-2020`, `addresses`, `building-footprints`, using addresses and buildings to place people more realistically than a simple land-area split.
 
-Outputs: [GeoParquet](https://stilesdata.com/palm-springs/data/voting-precincts-demographics.parquet) | [JSON](https://stilesdata.com/palm-springs/data/voting-precincts-demographics.json).
+Download it as [GeoParquet](https://stilesdata.com/palm-springs/data/voting-precincts-demographics.parquet) | [JSON](https://stilesdata.com/palm-springs/data/voting-precincts-demographics.json).
 
-Census vintage: 2020. Apportioned population: 44,652, compared with the official Palm Springs count of 44,575 (+77; +0.17%). Unassigned population from intersecting blocks: 3,672 (7.60%).
+The 2020 Census produced an apportioned population of 44,652 here. The official Palm Springs count was 44,575, a difference of +77 (+0.17%). Another 3,672 people from intersecting blocks remain unassigned (7.60%) rather than being forced into a boundary.
 
 ## Census demographics
 
-Demographic sidecars use 2020 Decennial Census PL 94-171 block counts for total
-population, race and ethnicity, voting-age population and occupied and vacant
-housing units. Blocks crossing a target boundary are apportioned by address
-share, then building-footprint area when no addresses exist and finally land
-area when neither inhabited feature is available. Full blocks remain the
-denominator, so population outside neighborhood or precinct coverage is
-reported as unassigned rather than forced into a target.
+The Census does not publish ready-made totals for Palm Springs neighborhood
+organizations or city voting precincts, so this project estimates them from 2020
+Decennial Census PL 94-171 blocks. The output includes total population, race and
+ethnicity, voting-age population and occupied and vacant housing units.
+
+When a block crosses a local boundary, the pipeline first divides its counts
+according to the addresses on each side. If the block has no addresses, it falls
+back to building-footprint area and then land area. The full block stays in the
+denominator throughout, which means people outside the target boundaries remain
+unassigned instead of being pushed into the nearest neighborhood or precinct.
 
 ## Update the data
 
-Requires Python 3.11 or newer.
+To rebuild and upload the collection yourself, use Python 3.11 or newer:
 
 ```bash
 python -m venv .venv
@@ -72,26 +78,29 @@ pip install -r requirements.txt
 make update
 ```
 
-Edit [`sources.json`](sources.json) for municipal layers and
-[`derived-sources.json`](derived-sources.json) for derived layers. Census
-variables and targets are configured in [`census.json`](census.json). Layer IDs
-must be unique lowercase kebab-case values. A failed build exits without
-replacing the existing data.
+To add a city layer, edit [`sources.json`](sources.json). Derived sources live in
+[`derived-sources.json`](derived-sources.json), while Census variables and
+targets live in [`census.json`](census.json). Layer IDs need to be unique,
+lowercase and kebab-cased.
+
+The build is all-or-nothing: if any download or derivation fails, the published
+files are left untouched.
 
 Updates upload to `s3://stilesdata.com/palm-springs/data/`. If
 `AWS_PROFILE_NAME` is set, the uploader uses that AWS profile; otherwise it uses
 the default AWS credential chain. Override `BUCKET` or `PREFIX` when needed.
 
 The [weekly workflow](.github/workflows/update-data.yml) runs every Monday,
-uploads the current files to S3 and refreshes this inventory. It requires
-`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` repository secrets and can also
-be run manually from the Actions tab.
+uploads the current files to S3 and refreshes this README. It needs
+`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` repository secrets, and it can
+also be started manually from the Actions tab.
 
 Weekly runs reuse the published 2020 Census block cache. Set `CENSUS_REFRESH=1`
 and provide `CENSUS_API_KEY` to rebuild that static cache from official sources.
 
 ## Source and reuse
 
-The City of Palm Springs is the source of the municipal layers. Derived layers
-identify their additional sources, methods and licenses above. Consult each
-linked source for authoritative data, descriptions and applicable use terms.
+The City of Palm Springs remains the authoritative source for its municipal
+layers. This project republishes those files for convenience and clearly labels
+the extra sources, methods and licenses used for derived layers. Follow the
+source links above before relying on a file for official or legal purposes.

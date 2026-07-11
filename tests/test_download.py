@@ -212,4 +212,4 @@ def test_readme_documents_census_artifacts_and_benchmark():
 
     assert "[GeoParquet](https://example.com/demographics.parquet)" in readme
     assert "[JSON](https://example.com/demographics.json)" in readme
-    assert "official Palm Springs count of 101 (-1; -0.99%)" in readme
+    assert "official Palm Springs count was 101, a difference of -1 (-0.99%)" in readme

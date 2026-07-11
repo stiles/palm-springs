@@ -525,21 +525,46 @@ def build_readme(catalog: dict[str, Any]) -> str:
         if layer["layer_type"] != "derived":
             continue
         inputs = ", ".join(f"`{item}`" for item in layer["derived_from"])
-        section = (
-            "### {title}\n\n"
-            "Built from [{source}]({source_url}) and the {inputs} layers. "
-            "Method: {method}.".format(
+        if layer.get("census_vintage"):
+            section = (
+                "### {title}\n\n"
+                "This estimate starts with [{source}]({source_url}) block counts. "
+                "We combine them with {inputs}, using addresses and buildings to "
+                "place people more realistically than a simple land-area split."
+            ).format(
+                title=layer["title"],
+                source=layer["source"],
+                source_url=layer["source_url"],
+                inputs=inputs,
+            )
+        elif layer["id"] == "building-footprints":
+            section = (
+                "### {title}\n\n"
+                "We start with [{source}]({source_url}), clip the footprints to the "
+                "city boundary and attach any city address points that fall inside "
+                "each building."
+            ).format(
+                title=layer["title"],
+                source=layer["source"],
+                source_url=layer["source_url"],
+            )
+        else:
+            section = (
+                "### {title}\n\n"
+                "This layer combines [{source}]({source_url}) with {inputs}. "
+                "The pipeline uses this method: {method}."
+            ).format(
                 title=layer["title"],
                 source=layer["source"],
                 source_url=layer["source_url"],
                 inputs=inputs,
                 method=layer["method"],
             )
-        )
         if layer.get("license"):
             section += (
-                " Licensed under [{license}]({license_url}); "
-                "[license copy]({license_data_url}).".format(
+                " The source data is available under "
+                "[{license}]({license_url}); a [copy of the license]"
+                "({license_data_url}) travels with the output.".format(
                     license=layer["license"],
                     license_url=layer["license_url"],
                     license_data_url=layer["license_data_url"],
@@ -551,7 +576,7 @@ def build_readme(catalog: dict[str, Any]) -> str:
                 f"[{artifact['format']}]({artifact['url']})"
                 for artifact in artifacts
             )
-            section += f"\n\nOutputs: {links}."
+            section += f"\n\nDownload it as {links}."
         if layer.get("census_vintage"):
             source_total = layer["qa"]["source_totals"]["pop_total"]
             unassigned = layer["qa"]["unassigned_totals"]["pop_total"]
@@ -561,11 +586,12 @@ def build_readme(catalog: dict[str, Any]) -> str:
             difference = layer["qa"]["place_population_difference"]
             difference_pct = layer["qa"]["place_population_difference_pct"]
             section += (
-                f"\n\nCensus vintage: {layer['census_vintage']}. "
-                f"Apportioned population: {assigned:,}, compared with the official "
-                f"Palm Springs count of {official:,} ({difference:+,}; "
-                f"{difference_pct:+.2f}%). Unassigned population from intersecting "
-                f"blocks: {unassigned:,} ({unassigned_pct:.2f}%)."
+                f"\n\nThe {layer['census_vintage']} Census produced an apportioned "
+                f"population of {assigned:,} here. The official Palm Springs count "
+                f"was {official:,}, a difference of {difference:+,} "
+                f"({difference_pct:+.2f}%). Another {unassigned:,} people from "
+                f"intersecting blocks remain unassigned ({unassigned_pct:.2f}%) "
+                "rather than being forced into a boundary."
             )
         derived_sections.append(section)
     derived_documentation = "\n\n".join(derived_sections)
@@ -574,39 +600,45 @@ def build_readme(catalog: dict[str, Any]) -> str:
         if derived_documentation
         else ""
     )
-    return f"""# Palm Springs open data
+    return f"""# Palm Springs GIS data
 
-Current public GIS layers for Palm Springs, California. Source layers are
-downloaded once a week and selected derived layers combine clearly identified
-open datasets. Spatial outputs use WGS84 (EPSG:4326) and are published as
-GeoJSON or GeoParquet, with JSON lookup tables where useful.
+This repository keeps a current collection of public GIS data for Palm Springs,
+California. Most layers come straight from the city. A few take extra work: the
+pipeline clips Microsoft building footprints to the city and uses Census blocks
+to estimate population for local neighborhoods and voting precincts.
+
+Everything refreshes once a week. Spatial files use WGS84 (EPSG:4326) and are
+available as GeoJSON or GeoParquet, with JSON lookup tables where they are handy.
 
 ## Layers
 
-Inventory generated {generated_date}. Feature counts describe the files on S3.
-“Source updated” is the latest date reported by the upstream source when
-available.
+These links point to the latest files on S3. The inventory was rebuilt on
+{generated_date}; “source updated” is the latest date reported by the upstream
+publisher when one is available.
 
 | Layer | Description | Features | Geometry | Source updated | Source |
 | --- | --- | ---: | --- | --- | --- |
 {inventory}
 
-Machine-readable metadata is available in
+Want to work with the inventory programmatically? Start with
 [`catalog.json`]({PUBLIC_BASE_URL}/catalog.json).{derived_section}
 
 ## Census demographics
 
-Demographic sidecars use 2020 Decennial Census PL 94-171 block counts for total
-population, race and ethnicity, voting-age population and occupied and vacant
-housing units. Blocks crossing a target boundary are apportioned by address
-share, then building-footprint area when no addresses exist and finally land
-area when neither inhabited feature is available. Full blocks remain the
-denominator, so population outside neighborhood or precinct coverage is
-reported as unassigned rather than forced into a target.
+The Census does not publish ready-made totals for Palm Springs neighborhood
+organizations or city voting precincts, so this project estimates them from 2020
+Decennial Census PL 94-171 blocks. The output includes total population, race and
+ethnicity, voting-age population and occupied and vacant housing units.
+
+When a block crosses a local boundary, the pipeline first divides its counts
+according to the addresses on each side. If the block has no addresses, it falls
+back to building-footprint area and then land area. The full block stays in the
+denominator throughout, which means people outside the target boundaries remain
+unassigned instead of being pushed into the nearest neighborhood or precinct.
 
 ## Update the data
 
-Requires Python 3.11 or newer.
+To rebuild and upload the collection yourself, use Python 3.11 or newer:
 
 ```bash
 python -m venv .venv
@@ -615,29 +647,32 @@ pip install -r requirements.txt
 make update
 ```
 
-Edit [`sources.json`](sources.json) for municipal layers and
-[`derived-sources.json`](derived-sources.json) for derived layers. Census
-variables and targets are configured in [`census.json`](census.json). Layer IDs
-must be unique lowercase kebab-case values. A failed build exits without
-replacing the existing data.
+To add a city layer, edit [`sources.json`](sources.json). Derived sources live in
+[`derived-sources.json`](derived-sources.json), while Census variables and
+targets live in [`census.json`](census.json). Layer IDs need to be unique,
+lowercase and kebab-cased.
+
+The build is all-or-nothing: if any download or derivation fails, the published
+files are left untouched.
 
 Updates upload to `s3://stilesdata.com/palm-springs/data/`. If
 `AWS_PROFILE_NAME` is set, the uploader uses that AWS profile; otherwise it uses
 the default AWS credential chain. Override `BUCKET` or `PREFIX` when needed.
 
 The [weekly workflow](.github/workflows/update-data.yml) runs every Monday,
-uploads the current files to S3 and refreshes this inventory. It requires
-`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` repository secrets and can also
-be run manually from the Actions tab.
+uploads the current files to S3 and refreshes this README. It needs
+`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` repository secrets, and it can
+also be started manually from the Actions tab.
 
 Weekly runs reuse the published 2020 Census block cache. Set `CENSUS_REFRESH=1`
 and provide `CENSUS_API_KEY` to rebuild that static cache from official sources.
 
 ## Source and reuse
 
-The City of Palm Springs is the source of the municipal layers. Derived layers
-identify their additional sources, methods and licenses above. Consult each
-linked source for authoritative data, descriptions and applicable use terms.
+The City of Palm Springs remains the authoritative source for its municipal
+layers. This project republishes those files for convenience and clearly labels
+the extra sources, methods and licenses used for derived layers. Follow the
+source links above before relying on a file for official or legal purposes.
 """
 
 
