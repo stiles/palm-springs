@@ -15,7 +15,8 @@ update:
 		--only-show-errors $(PROFILE_ARG)
 
 check:
-	python -m compileall -q download.py
+	python -m compileall -q download.py census.py
 	python -m json.tool sources.json >/dev/null
 	python -m json.tool derived-sources.json >/dev/null
+	python -m json.tool census.json >/dev/null
 	python -m pytest -q

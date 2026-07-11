@@ -163,3 +163,53 @@ def test_readme_documents_derived_source_and_license():
     assert "[Microsoft](https://example.com/source)" in readme
     assert "## Derived layers" in readme
     assert "[CDLA Permissive 2.0](https://example.com/license)" in readme
+
+
+def test_readme_documents_census_artifacts_and_benchmark():
+    catalog = derived_catalog()
+    catalog["layers"].append(
+        {
+            "id": "neighborhood-organizations-demographics",
+            "title": "Neighborhood demographics",
+            "description": "Census counts.",
+            "feature_count": 2,
+            "geometry_type": "Polygon",
+            "crs": "EPSG:4326",
+            "layer_type": "derived",
+            "source": "US Census Bureau",
+            "source_url": "https://example.com/census",
+            "source_link_label": "Census",
+            "data_url": "https://example.com/demographics.parquet",
+            "source_last_updated": "2020-04-01",
+            "downloaded_at": "2026-07-10T12:00:00+00:00",
+            "derived_from": ["neighborhood-organizations", "census-blocks-2020"],
+            "method": "hybrid allocation",
+            "census_vintage": 2020,
+            "artifacts": [
+                {
+                    "filename": "demographics.parquet",
+                    "format": "GeoParquet",
+                    "url": "https://example.com/demographics.parquet",
+                },
+                {
+                    "filename": "demographics.json",
+                    "format": "JSON",
+                    "url": "https://example.com/demographics.json",
+                },
+            ],
+            "qa": {
+                "source_totals": {"pop_total": 110},
+                "unassigned_totals": {"pop_total": 10},
+                "assigned_population": 100,
+                "official_place_population": 101,
+                "place_population_difference": -1,
+                "place_population_difference_pct": -0.99,
+            },
+        }
+    )
+
+    readme = build_readme(catalog)
+
+    assert "[GeoParquet](https://example.com/demographics.parquet)" in readme
+    assert "[JSON](https://example.com/demographics.json)" in readme
+    assert "official Palm Springs count of 101 (-1; -0.99%)" in readme

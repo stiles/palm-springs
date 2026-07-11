@@ -1,0 +1,53 @@
+{
+  "year": 2020,
+  "dataset": "dec/pl",
+  "state_fips": "06",
+  "county_fips": "065",
+  "place_fips": "55254",
+  "place_name": "Palm Springs city, California",
+  "official_place_population": 44575,
+  "projected_crs": "EPSG:3310",
+  "cache_filename": "census-blocks-2020.parquet",
+  "source": "US Census Bureau 2020 Decennial Census PL 94-171",
+  "source_url": "https://www.census.gov/programs-surveys/decennial-census/about/rdo/summary-files.html",
+  "api_url": "https://api.census.gov/data/2020/dec/pl",
+  "variables": {
+    "P1_001N": "pop_total",
+    "P2_002N": "pop_hispanic",
+    "P2_003N": "pop_not_hispanic",
+    "P2_005N": "pop_white_nh",
+    "P2_006N": "pop_black_nh",
+    "P2_007N": "pop_aian_nh",
+    "P2_008N": "pop_asian_nh",
+    "P2_009N": "pop_nhpi_nh",
+    "P2_010N": "pop_other_nh",
+    "P2_011N": "pop_two_or_more_nh",
+    "P3_001N": "vap_total",
+    "P4_002N": "vap_hispanic",
+    "P4_003N": "vap_not_hispanic",
+    "P4_005N": "vap_white_nh",
+    "P4_006N": "vap_black_nh",
+    "P4_007N": "vap_aian_nh",
+    "P4_008N": "vap_asian_nh",
+    "P4_009N": "vap_nhpi_nh",
+    "P4_010N": "vap_other_nh",
+    "P4_011N": "vap_two_or_more_nh",
+    "H1_001N": "housing_total",
+    "H1_002N": "housing_occupied",
+    "H1_003N": "housing_vacant"
+  },
+  "targets": [
+    {
+      "layer": "neighborhood-organizations",
+      "id_field": "NeighborhoodName",
+      "title": "Neighborhood organization demographics",
+      "description": "2020 Census population, voting-age population, race, ethnicity and housing counts apportioned to neighborhood organization boundaries."
+    },
+    {
+      "layer": "voting-precincts",
+      "id_field": "PRIMARY_NE",
+      "title": "Voting precinct demographics",
+      "description": "2020 Census population, voting-age population, race, ethnicity and housing counts apportioned to Palm Springs voting precincts."
+    }
+  ]
+}

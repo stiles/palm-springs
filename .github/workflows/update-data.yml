@@ -38,6 +38,8 @@ jobs:
           aws-region: us-west-1
 
       - name: Download and upload layers
+        env:
+          CENSUS_API_KEY: ${{ secrets.CENSUS_API_KEY }}
         run: make update
 
       - name: Commit inventory

@@ -27,9 +27,12 @@ from shapely.geometry import MultiPolygon, Polygon, mapping, shape
 from shapely.ops import unary_union
 from urllib3.util.retry import Retry
 
+from census import build_census_outputs, load_census_config
+
 ROOT = Path(__file__).resolve().parent
 SOURCES_PATH = ROOT / "sources.json"
 DERIVED_SOURCES_PATH = ROOT / "derived-sources.json"
+CENSUS_CONFIG_PATH = ROOT / "census.json"
 DATA_DIR = ROOT / ".build" / "data"
 CATALOG_PATH = DATA_DIR / "catalog.json"
 README_PATH = ROOT / "README.md"
@@ -38,6 +41,7 @@ PUBLIC_BASE_URL = os.getenv(
 ).rstrip("/")
 REQUIRED_SOURCE_FIELDS = {"layer", "url", "source", "source_url"}
 REQUIRED_DERIVED_FIELDS = {
+    "type",
     "layer",
     "title",
     "description",
@@ -477,6 +481,17 @@ def derive_building_footprints(
     }
 
 
+def derive_layer(
+    config: dict[str, Any], staging_dir: Path, generated_at: str
+) -> dict[str, Any]:
+    """Dispatch a configured derived layer to its implementation."""
+    derivers = {"building-footprints": derive_building_footprints}
+    derive = derivers.get(config["type"])
+    if derive is None:
+        raise ValueError(f"Unknown derived layer type: {config['type']}")
+    return derive(config, staging_dir, generated_at)
+
+
 def markdown_cell(value: Any) -> str:
     """Escape text for a Markdown table cell."""
     return str(value or "—").replace("|", r"\|").replace("\n", " ")
@@ -510,21 +525,49 @@ def build_readme(catalog: dict[str, Any]) -> str:
         if layer["layer_type"] != "derived":
             continue
         inputs = ", ".join(f"`{item}`" for item in layer["derived_from"])
-        derived_sections.append(
+        section = (
             "### {title}\n\n"
             "Built from [{source}]({source_url}) and the {inputs} layers. "
-            "Method: {method}. Licensed under [{license}]({license_url}); "
-            "[license copy]({license_data_url}).".format(
+            "Method: {method}.".format(
                 title=layer["title"],
                 source=layer["source"],
                 source_url=layer["source_url"],
                 inputs=inputs,
                 method=layer["method"],
-                license=layer["license"],
-                license_url=layer["license_url"],
-                license_data_url=layer["license_data_url"],
             )
         )
+        if layer.get("license"):
+            section += (
+                " Licensed under [{license}]({license_url}); "
+                "[license copy]({license_data_url}).".format(
+                    license=layer["license"],
+                    license_url=layer["license_url"],
+                    license_data_url=layer["license_data_url"],
+                )
+            )
+        artifacts = layer.get("artifacts", [])
+        if artifacts:
+            links = " | ".join(
+                f"[{artifact['format']}]({artifact['url']})"
+                for artifact in artifacts
+            )
+            section += f"\n\nOutputs: {links}."
+        if layer.get("census_vintage"):
+            source_total = layer["qa"]["source_totals"]["pop_total"]
+            unassigned = layer["qa"]["unassigned_totals"]["pop_total"]
+            unassigned_pct = unassigned / source_total * 100 if source_total else 0
+            assigned = layer["qa"]["assigned_population"]
+            official = layer["qa"]["official_place_population"]
+            difference = layer["qa"]["place_population_difference"]
+            difference_pct = layer["qa"]["place_population_difference_pct"]
+            section += (
+                f"\n\nCensus vintage: {layer['census_vintage']}. "
+                f"Apportioned population: {assigned:,}, compared with the official "
+                f"Palm Springs count of {official:,} ({difference:+,}; "
+                f"{difference_pct:+.2f}%). Unassigned population from intersecting "
+                f"blocks: {unassigned:,} ({unassigned_pct:.2f}%)."
+            )
+        derived_sections.append(section)
     derived_documentation = "\n\n".join(derived_sections)
     derived_section = (
         f"\n\n## Derived layers\n\n{derived_documentation}"
@@ -535,7 +578,8 @@ def build_readme(catalog: dict[str, Any]) -> str:
 
 Current public GIS layers for Palm Springs, California. Source layers are
 downloaded once a week and selected derived layers combine clearly identified
-open datasets. All outputs are GeoJSON in WGS84 (EPSG:4326).
+open datasets. Spatial outputs use WGS84 (EPSG:4326) and are published as
+GeoJSON or GeoParquet, with JSON lookup tables where useful.
 
 ## Layers
 
@@ -550,6 +594,16 @@ available.
 Machine-readable metadata is available in
 [`catalog.json`]({PUBLIC_BASE_URL}/catalog.json).{derived_section}
 
+## Census demographics
+
+Demographic sidecars use 2020 Decennial Census PL 94-171 block counts for total
+population, race and ethnicity, voting-age population and occupied and vacant
+housing units. Blocks crossing a target boundary are apportioned by address
+share, then building-footprint area when no addresses exist and finally land
+area when neither inhabited feature is available. Full blocks remain the
+denominator, so population outside neighborhood or precinct coverage is
+reported as unassigned rather than forced into a target.
+
 ## Update the data
 
 Requires Python 3.11 or newer.
@@ -562,9 +616,10 @@ make update
 ```
 
 Edit [`sources.json`](sources.json) for municipal layers and
-[`derived-sources.json`](derived-sources.json) for derived layers. Layer IDs must
-be unique lowercase kebab-case values. A failed build exits without replacing
-the existing data.
+[`derived-sources.json`](derived-sources.json) for derived layers. Census
+variables and targets are configured in [`census.json`](census.json). Layer IDs
+must be unique lowercase kebab-case values. A failed build exits without
+replacing the existing data.
 
 Updates upload to `s3://stilesdata.com/palm-springs/data/`. If
 `AWS_PROFILE_NAME` is set, the uploader uses that AWS profile; otherwise it uses
@@ -574,6 +629,9 @@ The [weekly workflow](.github/workflows/update-data.yml) runs every Monday,
 uploads the current files to S3 and refreshes this inventory. It requires
 `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` repository secrets and can also
 be run manually from the Actions tab.
+
+Weekly runs reuse the published 2020 Census block cache. Set `CENSUS_REFRESH=1`
+and provide `CENSUS_API_KEY` to rebuild that static cache from official sources.
 
 ## Source and reuse
 
@@ -588,9 +646,16 @@ def publish(staging_dir: Path, catalog: dict[str, Any]) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     expected_files = {"catalog.json"}
     for layer in catalog["layers"]:
-        filename = f"{layer['id']}.geojson"
-        expected_files.add(filename)
-        shutil.move(staging_dir / filename, DATA_DIR / filename)
+        artifacts = layer.get("artifacts")
+        if artifacts:
+            for artifact in artifacts:
+                filename = artifact["filename"]
+                expected_files.add(filename)
+                shutil.move(staging_dir / filename, DATA_DIR / filename)
+        else:
+            filename = f"{layer['id']}.geojson"
+            expected_files.add(filename)
+            shutil.move(staging_dir / filename, DATA_DIR / filename)
         license_data_url = layer.get("license_data_url")
         if license_data_url:
             license_filename = license_data_url.rsplit("/", 1)[-1]
@@ -612,6 +677,7 @@ def main() -> None:
     """Download all configured layers and publish the complete snapshot."""
     sources = load_sources()
     derived_sources = load_derived_sources()
+    census_config = load_census_config(CENSUS_CONFIG_PATH)
     duplicate_ids = {source["layer"] for source in sources} & {
         source["layer"] for source in derived_sources
     }
@@ -627,8 +693,16 @@ def main() -> None:
             download_layer(source, staging_dir, generated_at) for source in sources
         ]
         layers.extend(
-            derive_building_footprints(source, staging_dir, generated_at)
+            derive_layer(source, staging_dir, generated_at)
             for source in derived_sources
+        )
+        layers.extend(
+            build_census_outputs(
+                census_config,
+                staging_dir,
+                generated_at,
+                PUBLIC_BASE_URL,
+            )
         )
         catalog = {
             "generated_at": generated_at,

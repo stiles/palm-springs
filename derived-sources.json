@@ -1,5 +1,6 @@
 [
   {
+    "type": "building-footprints",
     "layer": "building-footprints",
     "title": "Building footprints",
     "description": "Microsoft building footprints clipped to Palm Springs and enriched with contained city address points.",
