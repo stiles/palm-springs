@@ -1,0 +1,12 @@
+{
+  "station_id": "048892",
+  "station_name": "Thermal Fcwos",
+  "variable": "maxt",
+  "timezone": "America/Los_Angeles",
+  "initial_backfill_days": 365,
+  "refresh_days": 7,
+  "endpoint": "https://sercc.oasis.unc.edu/climpermap_json.php",
+  "source": "Southeast Regional Climate Center Climate Perspectives",
+  "source_url": "https://sercc.oasis.unc.edu/about.php",
+  "public_base_url": "https://stilesdata.com/palm-springs/climate"
+}

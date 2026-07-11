@@ -1,4 +1,4 @@
-.PHONY: install update check
+.PHONY: install update update-climate check
 
 BUCKET ?= stilesdata.com
 PREFIX ?= palm-springs
@@ -14,9 +14,16 @@ update:
 		--delete \
 		--only-show-errors $(PROFILE_ARG)
 
+update-climate:
+	python climate.py
+	aws s3 sync .build/climate "s3://$(BUCKET)/$(PREFIX)/climate" \
+		--delete \
+		--only-show-errors $(PROFILE_ARG)
+
 check:
-	python -m compileall -q download.py census.py
+	python -m compileall -q download.py census.py climate.py
 	python -m json.tool sources.json >/dev/null
 	python -m json.tool derived-sources.json >/dev/null
 	python -m json.tool census.json >/dev/null
+	python -m json.tool climate.json >/dev/null
 	python -m pytest -q

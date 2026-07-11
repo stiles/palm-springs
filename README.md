@@ -1,12 +1,14 @@
 # Palm Springs GIS data
 
-This repository keeps a current collection of public GIS data for Palm Springs,
-California. Most layers come straight from the city. A few take extra work: the
-pipeline clips Microsoft building footprints to the city and uses Census blocks
-to estimate population for local neighborhoods and voting precincts.
+This repository keeps a current collection of public GIS and climate data for
+Palm Springs, California. Most layers come straight from the city. A few take
+extra work: the pipeline clips Microsoft building footprints to the city, uses
+Census blocks to estimate population for local neighborhoods and voting
+precincts and derives a daily maximum-temperature normal from station reports.
 
-Everything refreshes once a week. Spatial files use WGS84 (EPSG:4326) and are
-available as GeoJSON or GeoParquet, with JSON lookup tables where they are handy.
+Spatial layers refresh once a week. Climate observations refresh daily. Spatial
+files use WGS84 (EPSG:4326) and are available as GeoJSON or GeoParquet, with JSON
+lookup tables where they are handy.
 
 ## Layers
 
@@ -67,6 +69,19 @@ back to building-footprint area and then land area. The full block stays in the
 denominator throughout, which means people outside the target boundaries remain
 unassigned instead of being pushed into the nearest neighborhood or precinct.
 
+## Daily climate normals
+
+The daily collector gets the maximum temperature and departure from normal for
+[SERCC Climate Perspectives](https://sercc.oasis.unc.edu/Map.php?region=wrcc) station
+`048892`, at Palm Springs International Airport. It calculates the reported normal by subtracting the
+departure from the observed maximum.
+
+Download the history as
+[JSON](https://stilesdata.com/palm-springs/climate/daily-max-temperature.json) or
+[CSV](https://stilesdata.com/palm-springs/climate/daily-max-temperature.csv).
+Each run revisits the latest seven days so late reports and source corrections
+replace earlier values.
+
 ## Update the data
 
 To rebuild and upload the collection yourself, use Python 3.11 or newer:
@@ -76,12 +91,14 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 make update
+make update-climate
 ```
 
 To add a city layer, edit [`sources.json`](sources.json). Derived sources live in
 [`derived-sources.json`](derived-sources.json), while Census variables and
-targets live in [`census.json`](census.json). Layer IDs need to be unique,
-lowercase and kebab-cased.
+targets live in [`census.json`](census.json). Climate collection settings live
+in [`climate.json`](climate.json). Layer IDs need to be unique, lowercase and
+kebab-cased.
 
 The build is all-or-nothing: if any download or derivation fails, the published
 files are left untouched.
@@ -94,6 +111,10 @@ The [weekly workflow](.github/workflows/update-data.yml) runs every Monday,
 uploads the current files to S3 and refreshes this README. It needs
 `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` repository secrets, and it can
 also be started manually from the Actions tab.
+
+The [daily climate workflow](.github/workflows/update-climate.yml) uses the same
+AWS secrets and publishes its files under
+`s3://stilesdata.com/palm-springs/climate/`.
 
 Weekly runs reuse the published 2020 Census block cache. Set `CENSUS_REFRESH=1`
 and provide `CENSUS_API_KEY` to rebuild that static cache from official sources.
