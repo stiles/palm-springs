@@ -13,7 +13,7 @@ lookup tables where they are handy.
 ## Layers
 
 These links point to the latest files on S3. The inventory was rebuilt on
-2026-07-11; “source updated” is the latest date reported by the upstream
+2026-07-13; “source updated” is the latest date reported by the upstream
 publisher when one is available.
 
 | Layer | Description | Features | Geometry | Source updated | Source |
@@ -72,9 +72,10 @@ unassigned instead of being pushed into the nearest neighborhood or precinct.
 ## Daily climate normals
 
 The daily collector gets the maximum temperature and departure from normal for
-[SERCC Climate Perspectives](https://sercc.oasis.unc.edu/Map.php?region=wrcc) station
-`048892`, at Palm Springs International Airport. It calculates the reported normal by subtracting the
-departure from the observed maximum.
+[SERCC Climate Perspectives](https://sercc.oasis.unc.edu/about.php) station
+`048892`, Thermal Fcwos. It calculates the reported normal by subtracting the
+departure from the observed maximum. The station is labeled as Palm Springs by
+the source, though its coordinates are near Thermal.
 
 Download the history as
 [JSON](https://stilesdata.com/palm-springs/climate/daily-max-temperature.json) or
