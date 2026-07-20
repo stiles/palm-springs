@@ -13,7 +13,7 @@ lookup tables where they are handy.
 ## Layers
 
 These links point to the latest files on S3. The inventory was rebuilt on
-2026-07-13; “source updated” is the latest date reported by the upstream
+2026-07-20; “source updated” is the latest date reported by the upstream
 publisher when one is available.
 
 | Layer | Description | Features | Geometry | Source updated | Source |
