@@ -13,20 +13,21 @@ lookup tables where they are handy.
 ## Layers
 
 These links point to the latest files on S3. The inventory was rebuilt on
-2026-07-11; “source updated” is the latest date reported by the upstream
+2026-07-31; “source updated” is the latest date reported by the upstream
 publisher when one is available.
 
 | Layer | Description | Features | Geometry | Source updated | Source |
 | --- | --- | ---: | --- | --- | --- |
-| [Neighborhood organizations](https://stilesdata.com/palm-springs/data/neighborhood-organizations.geojson) | Boundaries for the city's recognized neighborhood organizations. | 66 | Polygon | 2026-06-09 | [ArcGIS](https://services.arcgis.com/f48yV21HSEYeCYMI/ArcGIS/rest/services/One_PS_Neighborhood_Organizations_(View)/FeatureServer/0) |
+| [Neighborhood organizations](https://stilesdata.com/palm-springs/data/neighborhood-organizations.geojson) | Boundaries for the city's recognized neighborhood organizations. | 66 | Polygon | 2026-07-27 | [ArcGIS](https://services.arcgis.com/f48yV21HSEYeCYMI/ArcGIS/rest/services/One_PS_Neighborhood_Organizations_(View)/FeatureServer/0) |
 | [City boundary](https://stilesdata.com/palm-springs/data/city-boundary.geojson) | The incorporated boundary of Palm Springs. | 1 | Polygon | 2026-03-16 | [ArcGIS](https://services.arcgis.com/f48yV21HSEYeCYMI/ArcGIS/rest/services/City_of_PS_Boundary/FeatureServer/0) |
 | [Voting precincts](https://stilesdata.com/palm-springs/data/voting-precincts.geojson) | Voting precinct boundaries in Palm Springs. | 105 | Polygon | 2022-07-28 | [ArcGIS](https://services.arcgis.com/f48yV21HSEYeCYMI/ArcGIS/rest/services/Voting_Precincts_(View)/FeatureServer/0) |
 | [Parks](https://stilesdata.com/palm-springs/data/parks.geojson) | Palm Springs park boundaries. | 16 | Polygon | 2026-06-19 | [ArcGIS](https://services.arcgis.com/f48yV21HSEYeCYMI/ArcGIS/rest/services/Palm_Springs_Parks_(View)/FeatureServer/0) |
 | [Parcels](https://stilesdata.com/palm-springs/data/parcels.geojson) | Parcel boundaries where the source CityFlag field is Yes. | 34,304 | Polygon | 2026-06-23 | [ArcGIS](https://services.arcgis.com/f48yV21HSEYeCYMI/ArcGIS/rest/services/Palm_Springs_Parcels_(View)/FeatureServer/0) |
-| [Tree inventory](https://stilesdata.com/palm-springs/data/tree-inventory.geojson) | Locations and attributes from the city's tree inventory. | 15,211 | Point | 2025-12-02 | [ArcGIS](https://services.arcgis.com/f48yV21HSEYeCYMI/ArcGIS/rest/services/COPS_Tree_Inventory/FeatureServer/0) |
+| [Tree inventory](https://stilesdata.com/palm-springs/data/tree-inventory.geojson) | Locations and attributes from the city's tree inventory. | 15,211 | Point | 2026-07-29 | [ArcGIS](https://services.arcgis.com/f48yV21HSEYeCYMI/ArcGIS/rest/services/COPS_Tree_Inventory/FeatureServer/0) |
 | [Local shops](https://stilesdata.com/palm-springs/data/local-shops.geojson) | Businesses listed in the city's shop-local program. | 129 | Point | 2026-06-30 | [ArcGIS](https://services.arcgis.com/f48yV21HSEYeCYMI/ArcGIS/rest/services/PS_Shop_Local_List_(View)/FeatureServer/0) |
 | [Addresses](https://stilesdata.com/palm-springs/data/addresses.geojson) | Address points published by the City of Palm Springs. | 29,659 | Point | 2024-10-21 | [ArcGIS](https://services.arcgis.com/f48yV21HSEYeCYMI/ArcGIS/rest/services/PS_Addresses_DroneSense/FeatureServer/0) |
 | [Building footprints](https://stilesdata.com/palm-springs/data/building-footprints.geojson) | Microsoft building footprints clipped to Palm Springs and enriched with contained city address points. | 23,092 | Polygon | 2026-02-23 | [Microsoft](https://github.com/microsoft/GlobalMLBuildingFootprints) |
+| [City building footprints (2026 CPRA release)](https://stilesdata.com/palm-springs/data/city-building-footprints.geojson) | Authoritative building footprints provided by the City of Palm Springs GIS department through a California Public Records Act request. | 30,067 | Polygon | 2026-07-29 | [City CPRA release](https://stilesdata.com/palm-springs/source/city-building-footprints-2026-07-29.zip) |
 | [2020 Census blocks](https://stilesdata.com/palm-springs/data/census-blocks-2020.parquet) | Tabulation blocks intersecting Palm Springs with PL 94-171 population, voting-age population, race, ethnicity and housing counts. | 1,146 | Polygon | 2020-04-01 | [Census](https://www.census.gov/programs-surveys/decennial-census/about/rdo/summary-files.html) |
 | [Neighborhood organization demographics](https://stilesdata.com/palm-springs/data/neighborhood-organizations-demographics.parquet) | 2020 Census population, voting-age population, race, ethnicity and housing counts apportioned to neighborhood organization boundaries. | 66 | Polygon | 2020-04-01 | [Census](https://www.census.gov/programs-surveys/decennial-census/about/rdo/summary-files.html) |
 | [Voting precinct demographics](https://stilesdata.com/palm-springs/data/voting-precincts-demographics.parquet) | 2020 Census population, voting-age population, race, ethnicity and housing counts apportioned to Palm Springs voting precincts. | 105 | Polygon | 2020-04-01 | [Census](https://www.census.gov/programs-surveys/decennial-census/about/rdo/summary-files.html) |
@@ -39,6 +40,14 @@ Want to work with the inventory programmatically? Start with
 ### Building footprints
 
 We start with [Microsoft GlobalML Building Footprints](https://github.com/microsoft/GlobalMLBuildingFootprints), clip the footprints to the city boundary and attach any city address points that fall inside each building. The source data is available under [CDLA Permissive 2.0](https://cdla.dev/permissive-2-0/); a [copy of the license](https://stilesdata.com/palm-springs/data/building-footprints-license.txt) travels with the output.
+
+### City building footprints (2026 CPRA release)
+
+The City of Palm Springs GIS department provided this shapefile on July 29, 2026 in response to a California Public Records Act request. The original data uses EPSG:2230; this project reprojects it to WGS84 for the web-ready copies. Download the [original shapefile archive](https://stilesdata.com/palm-springs/source/city-building-footprints-2026-07-29.zip) or contact [GIS@palmspringsca.gov](mailto:GIS@palmspringsca.gov).
+
+City disclaimer: Data is provided as-is; the City of Palm Springs is not liable for errors or omissions and assumes no liability for decisions or actions based on the data.
+
+Download it as [GeoJSON](https://stilesdata.com/palm-springs/data/city-building-footprints.geojson) | [GeoParquet](https://stilesdata.com/palm-springs/data/city-building-footprints.parquet).
 
 ### Neighborhood organization demographics
 
@@ -72,9 +81,10 @@ unassigned instead of being pushed into the nearest neighborhood or precinct.
 ## Daily climate normals
 
 The daily collector gets the maximum temperature and departure from normal for
-[SERCC Climate Perspectives](https://sercc.oasis.unc.edu/Map.php?region=wrcc) station
-`048892`, at Palm Springs International Airport. It calculates the reported normal by subtracting the
-departure from the observed maximum.
+[SERCC Climate Perspectives](https://sercc.oasis.unc.edu/about.php) station
+`048892`, Thermal Fcwos. It calculates the reported normal by subtracting the
+departure from the observed maximum. The station is labeled as Palm Springs by
+the source, though its coordinates are near Thermal.
 
 Download the history as
 [JSON](https://stilesdata.com/palm-springs/climate/daily-max-temperature.json) or

@@ -193,6 +193,15 @@ def merge_records(
     return [records[key] for key in sorted(records)]
 
 
+def build_history(
+    existing: list[dict[str, Any]], updates: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Preserve published history when the station has no new observations."""
+    if not existing and not updates:
+        raise RuntimeError("No climate observations were available")
+    return merge_records(existing, updates)
+
+
 def write_outputs(config: dict[str, Any], records: list[dict[str, Any]]) -> None:
     """Write matching JSON and CSV history files."""
     if not records:
@@ -246,8 +255,8 @@ def main() -> None:
 
     updates = collect_dates(config, date_range(end_date, days))
     if not updates:
-        raise RuntimeError("No climate observations were available")
-    records = merge_records(existing, updates)
+        print("No new observations; preserving the published climate history.")
+    records = build_history(existing, updates)
     write_outputs(config, records)
     print(
         f"Published {len(records)} station-days from "

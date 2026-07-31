@@ -45,15 +45,28 @@ REQUIRED_DERIVED_FIELDS = {
     "layer",
     "title",
     "description",
-    "manifest_url",
-    "location",
-    "zoom",
     "source",
     "source_url",
-    "license",
-    "license_url",
-    "license_file",
     "inputs",
+}
+DERIVED_TYPE_FIELDS = {
+    "building-footprints": {
+        "manifest_url",
+        "location",
+        "zoom",
+        "license",
+        "license_url",
+        "license_file",
+    },
+    "static-vector": {
+        "archive_url",
+        "archive_layer",
+        "source_last_updated",
+        "source_crs",
+        "expected_feature_count",
+        "contact",
+        "disclaimer",
+    },
 }
 LAYER_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
@@ -101,7 +114,11 @@ def load_derived_sources() -> list[dict[str, Any]]:
     for index, source in enumerate(sources):
         if not isinstance(source, dict):
             raise ValueError(f"Derived source {index + 1} must be an object")
-        missing = REQUIRED_DERIVED_FIELDS - source.keys()
+        source_type = source.get("type")
+        type_fields = DERIVED_TYPE_FIELDS.get(source_type)
+        if type_fields is None:
+            raise ValueError(f"Unknown derived layer type: {source_type!r}")
+        missing = (REQUIRED_DERIVED_FIELDS | type_fields) - source.keys()
         if missing:
             raise ValueError(
                 f"Derived source {index + 1} is missing: "
@@ -481,11 +498,87 @@ def derive_building_footprints(
     }
 
 
+def derive_static_vector(
+    config: dict[str, Any],
+    staging_dir: Path,
+    generated_at: str,
+    session: requests.Session | None = None,
+) -> dict[str, Any]:
+    """Convert an archived public-record vector layer to web-ready formats."""
+    print(f"Converting {config['layer']}...")
+    session = session or request_session()
+    response = session.get(config["archive_url"], timeout=120)
+    response.raise_for_status()
+    archive_path = staging_dir / f"{config['layer']}-source.zip"
+    archive_path.write_bytes(response.content)
+
+    frame = gpd.read_file(
+        f"zip://{archive_path}!{config['archive_layer']}"
+    )
+    if frame.crs is None or frame.crs.to_string() != config["source_crs"]:
+        raise RuntimeError(
+            f"{config['layer']} CRS changed: expected {config['source_crs']}, "
+            f"found {frame.crs}"
+        )
+    if len(frame) != config["expected_feature_count"]:
+        raise RuntimeError(
+            f"{config['layer']} feature count changed: expected "
+            f"{config['expected_feature_count']:,}, found {len(frame):,}"
+        )
+    if frame.geometry.isna().any() or frame.geometry.is_empty.any():
+        raise RuntimeError(f"{config['layer']} contains missing or empty geometry")
+    if not frame.geometry.is_valid.all():
+        raise RuntimeError(f"{config['layer']} contains invalid geometry")
+
+    frame = frame.to_crs("EPSG:4326")
+    geojson_filename = f"{config['layer']}.geojson"
+    parquet_filename = f"{config['layer']}.parquet"
+    frame.to_file(staging_dir / geojson_filename, driver="GeoJSON", index=False)
+    frame.to_parquet(staging_dir / parquet_filename, index=False)
+
+    return {
+        "id": config["layer"],
+        "title": config["title"],
+        "description": config["description"],
+        "feature_count": len(frame),
+        "geometry_type": ", ".join(sorted(frame.geometry.geom_type.unique())),
+        "crs": "EPSG:4326",
+        "layer_type": "derived",
+        "source": config["source"],
+        "source_url": config["source_url"],
+        "source_link_label": "City CPRA release",
+        "data_url": f"{PUBLIC_BASE_URL}/{geojson_filename}",
+        "source_last_updated": config["source_last_updated"],
+        "downloaded_at": generated_at,
+        "derived_from": config["inputs"],
+        "method": f"reproject {config['source_crs']} to EPSG:4326",
+        "source_crs": config["source_crs"],
+        "source_archive_url": config["archive_url"],
+        "contact": config["contact"],
+        "disclaimer": config["disclaimer"],
+        "artifacts": [
+            {
+                "filename": geojson_filename,
+                "format": "GeoJSON",
+                "url": f"{PUBLIC_BASE_URL}/{geojson_filename}",
+            },
+            {
+                "filename": parquet_filename,
+                "format": "GeoParquet",
+                "url": f"{PUBLIC_BASE_URL}/{parquet_filename}",
+            },
+        ],
+    }
+
+
 def derive_layer(
     config: dict[str, Any], staging_dir: Path, generated_at: str
 ) -> dict[str, Any]:
     """Dispatch a configured derived layer to its implementation."""
-    derivers = {"building-footprints": derive_building_footprints}
+    derivers = {
+        "building-footprints": derive_building_footprints,
+        "static-vector": derive_static_vector,
+    }
     derive = derivers.get(config["type"])
     if derive is None:
         raise ValueError(f"Unknown derived layer type: {config['type']}")
@@ -547,6 +640,23 @@ def build_readme(catalog: dict[str, Any]) -> str:
                 title=layer["title"],
                 source=layer["source"],
                 source_url=layer["source_url"],
+            )
+        elif layer["id"] == "city-building-footprints":
+            section = (
+                "### {title}\n\n"
+                "The City of Palm Springs GIS department provided this shapefile "
+                "on July 29, 2026 in response to a California Public Records Act "
+                "request. The original data uses {source_crs}; this project "
+                "reprojects it to WGS84 for the web-ready copies. Download the "
+                "[original shapefile archive]({archive_url}) or contact "
+                "[{contact}](mailto:{contact}).\n\n"
+                "City disclaimer: {disclaimer}"
+            ).format(
+                title=layer["title"],
+                source_crs=layer["source_crs"],
+                archive_url=layer["source_archive_url"],
+                contact=layer["contact"],
+                disclaimer=layer["disclaimer"],
             )
         else:
             section = (

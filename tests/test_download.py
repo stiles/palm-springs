@@ -1,4 +1,5 @@
 import json
+import zipfile
 
 import geopandas as gpd
 import mercantile
@@ -6,6 +7,7 @@ from shapely.geometry import Point, Polygon, box
 
 from download import (
     build_readme,
+    derive_static_vector,
     enrich_buildings,
     polygonal_geometry,
     select_manifest_tiles,
@@ -157,12 +159,107 @@ def test_write_feature_collection_preserves_nested_addresses(tmp_path):
     assert isinstance(payload["features"][0]["properties"]["addresses"], list)
 
 
+def test_derive_static_vector_reprojects_archived_shapefile(tmp_path):
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    source_path = source_dir / "footprints.shp"
+    gpd.GeoDataFrame(
+        [{"source_id": "1", "geometry": box(6_450_000, 2_200_000, 6_450_100, 2_200_100)}],
+        crs="EPSG:2230",
+    ).to_file(source_path)
+    archive_path = tmp_path / "source.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        for path in source_dir.iterdir():
+            archive.write(path, f"source/{path.name}")
+
+    class Response:
+        content = archive_path.read_bytes()
+
+        def raise_for_status(self):
+            return None
+
+    class Session:
+        def get(self, url, timeout):
+            return Response()
+
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    metadata = derive_static_vector(
+        {
+            "layer": "city-buildings",
+            "title": "City buildings",
+            "description": "City records.",
+            "archive_url": "https://example.com/source.zip",
+            "archive_layer": "source/footprints.shp",
+            "source": "City",
+            "source_url": "https://example.com/source.zip",
+            "source_last_updated": "2026-07-29",
+            "source_crs": "EPSG:2230",
+            "expected_feature_count": 1,
+            "contact": "gis@example.com",
+            "disclaimer": "As is.",
+            "inputs": [],
+        },
+        staging_dir,
+        "2026-07-30T00:00:00+00:00",
+        session=Session(),
+    )
+
+    output = gpd.read_parquet(staging_dir / "city-buildings.parquet")
+    assert output.crs.to_epsg() == 4326
+    assert metadata["feature_count"] == 1
+    assert [artifact["format"] for artifact in metadata["artifacts"]] == [
+        "GeoJSON",
+        "GeoParquet",
+    ]
+
+
 def test_readme_documents_derived_source_and_license():
     readme = build_readme(derived_catalog())
 
     assert "[Microsoft](https://example.com/source)" in readme
     assert "## Derived layers" in readme
     assert "[CDLA Permissive 2.0](https://example.com/license)" in readme
+
+
+def test_readme_documents_city_cpra_release():
+    catalog = derived_catalog()
+    catalog["layers"].append(
+        {
+            "id": "city-building-footprints",
+            "title": "City building footprints",
+            "description": "City records.",
+            "feature_count": 30_067,
+            "geometry_type": "Polygon",
+            "crs": "EPSG:4326",
+            "layer_type": "derived",
+            "source": "City of Palm Springs GIS Department",
+            "source_url": "https://example.com/source.zip",
+            "source_link_label": "City CPRA release",
+            "data_url": "https://example.com/buildings.geojson",
+            "source_last_updated": "2026-07-29",
+            "downloaded_at": "2026-07-30T00:00:00+00:00",
+            "derived_from": [],
+            "method": "reproject EPSG:2230 to EPSG:4326",
+            "source_crs": "EPSG:2230",
+            "source_archive_url": "https://example.com/source.zip",
+            "contact": "GIS@palmspringsca.gov",
+            "disclaimer": "Data is provided as-is.",
+            "artifacts": [
+                {
+                    "filename": "city-building-footprints.geojson",
+                    "format": "GeoJSON",
+                    "url": "https://example.com/buildings.geojson",
+                }
+            ],
+        }
+    )
+
+    readme = build_readme(catalog)
+
+    assert "[original shapefile archive](https://example.com/source.zip)" in readme
+    assert "[GIS@palmspringsca.gov](mailto:GIS@palmspringsca.gov)" in readme
+    assert "[GeoJSON](https://example.com/buildings.geojson)" in readme
 
 
 def test_readme_documents_census_artifacts_and_benchmark():

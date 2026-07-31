@@ -1,6 +1,8 @@
 import json
 from datetime import date
 
+import pytest
+
 import climate
 
 
@@ -65,6 +67,17 @@ def test_merge_records_replaces_corrected_station_day():
     corrected = {"date": "2026-07-10", "station_id": "048892", "max_temp_f": 111}
 
     assert climate.merge_records([old], [corrected]) == [corrected]
+
+
+def test_build_history_preserves_existing_data_during_station_outage():
+    existing = [{"date": "2026-07-22", "station_id": "048892"}]
+
+    assert climate.build_history(existing, []) == existing
+
+
+def test_build_history_rejects_empty_initial_collection():
+    with pytest.raises(RuntimeError, match="No climate observations"):
+        climate.build_history([], [])
 
 
 def test_write_outputs_creates_matching_json_and_csv(tmp_path, monkeypatch):
